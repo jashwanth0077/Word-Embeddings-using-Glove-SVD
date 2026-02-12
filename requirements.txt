@@ -1,0 +1,5 @@
+sklearn-crfsuite
+scikit-learn
+datasets
+numpy
+scipy
