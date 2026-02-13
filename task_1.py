@@ -90,3 +90,38 @@ for epoch in range(50):
 # The GloVe paper suggests w + w_tilde as the final representation
 final_embeddings = model.w.weight.detach().numpy() + model.w_tilde.weight.detach().numpy()
 print(f"Final Word Representation Matrix Shape: {final_embeddings.shape}")
+from sklearn.metrics.pairwise import cosine_similarity
+
+# 1. Create a word-to-vector mapping for GloVe
+# final_embeddings was calculated as w + w_tilde
+# glove_word_to_vec = {word: final_embeddings[idx] for word, idx in vocab_to_idx.items()}
+
+# def get_glove_neighbors(target_word, n=5):
+#     if target_word not in vocab_to_idx:
+#         return f"Word '{target_word}' not found in GloVe vocabulary."
+    
+#     # Get vector for the target word
+#     word_vec = glove_word_to_vec[target_word].reshape(1, -1)
+    
+#     # Calculate similarities against all other vectors
+#     all_words = list(vocab_to_idx.keys())
+#     all_vecs = np.array([glove_word_to_vec[w] for w in all_words])
+    
+#     sims = cosine_similarity(word_vec, all_vecs).flatten()
+    
+#     # Get top N (excluding the word itself)
+#     related_indices = sims.argsort()[::-1][1:n+1]
+#     return [(all_words[i], sims[i]) for i in related_indices]
+
+# # 2. Analyze the same 3 words
+# chosen_words = ["market", "news", "politics"] 
+
+# print("\n--- Top 5 Nearest Neighbors (GloVe) ---")
+# for word in chosen_words:
+#     neighbors = get_glove_neighbors(word)
+#     print(f"\nWord: {word}")
+#     if isinstance(neighbors, list):
+#         for neighbor, score in neighbors:
+#             print(f"  -> {neighbor}: {score:.4f}")
+#     else:
+#         print(neighbors)
