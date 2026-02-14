@@ -6,27 +6,27 @@ from collections import Counter
 # 1. FEATURE ENGINEERING (Lexical, Shape, Sub-word, POS, Chunk)
 def word2features(sent, i):
     word = sent[i][0]
-    postag = sent[i][1]    # Integer POS tag
-    chunktag = sent[i][2]  # Integer Chunk tag
+    postag = sent[i][1]   
+    chunktag = sent[i][2]  
     
     features = {
         'bias': 1.0,
         'word.lower()': word.lower(),
-        # --- SUB-WORD FEATURES ---
+        #  SUB-WORD FEATURES 
         'word[-3:]': word[-3:],
         'word[-2:]': word[-2:],
         'word[:3]': word[:3],
         'word[:2]': word[:2],
-        # --- SHAPE FEATURES ---
+        # SHAPE FEATURES 
         'word.isupper()': word.isupper(),
         'word.istitle()': word.istitle(),
         'word.isdigit()': word.isdigit(),
         'word.has_hyphen': '-' in word,
         'word.length': len(word),
-        # --- GRAMMATICAL FEATURES (POS & CHUNK) ---
+        # GRAMMATICAL FEATURES (POS & CHUNK)
         'postag': postag,
-        'postag.is_proper': postag in [22, 23], # 22=NNP, 23=NNPS
-        'chunktag': chunktag,                  # Current Chunk
+        'postag.is_proper': postag in [22, 23], 
+        'chunktag': chunktag,                 
     }
     
     # --- CONTEXT WINDOW (i-1) ---
@@ -63,11 +63,11 @@ def sent2features(sent):
     return [word2features(sent, i) for i in range(len(sent))]
 
 def sent2labels(sent):
-    # Unpack 4 values: token, postag, chunktag, label
+  
     return [label for token, postag, chunktag, label in sent]
 
 # 2. DATA PREPARATION
-# Using the standard HF path "eriktks/conll2003" (more reliable than lhoestq)
+
 print("Loading CoNLL-2003 dataset...")
 dataset = load_dataset("lhoestq/conll2003") 
 
@@ -80,10 +80,10 @@ def prepare_data(data_split):
         chunk_tags = example['chunk_tags']
         ner_ids = example['ner_tags']
         
-        # Convert IDs to strings
+      
         labels = [label_map[i] for i in ner_ids]
         
-        # Zip all four: (token, pos, chunk, label)
+       
         formatted_data.append(list(zip(tokens, pos_tags, chunk_tags, labels)))
     return formatted_data
 
@@ -123,7 +123,7 @@ print_top_features(crf)
 
 # 5. EVALUATION
 labels = list(crf.classes_)
-labels.remove('O') # We care about entities, not 'O'
+labels.remove('O') 
 y_pred = crf.predict(X_test)
 
 f1 = metrics.flat_f1_score(y_test, y_pred, average='weighted', labels=labels)
@@ -179,25 +179,24 @@ def print_final_feature_contributions(crf):
         'EOS': 'End of Sentence marker'
     }
 
-    # Sort keys by length descending to match specific prefixes before general ones
+    
     sorted_known_keys = sorted(feature_descriptions.keys(), key=len, reverse=True)
 
     # 2. UNPACK TUPLE AND AGGREGATE
-    # state_features.items() returns ((feature_string, label), weight)
+   
     for (raw_feature, label), weight in state_features.items():
         w = abs(weight)
         match_found = False
 
-        # Apply prefix matching to the raw_feature string
+       
         for key in sorted_known_keys:
-            # Match if exactly the key or if key followed by colon value
             if raw_feature == key or raw_feature.startswith(key + ":"):
                 type_importance[key] += w
                 match_found = True
                 break
         
         if not match_found:
-            # Fallback for anything that didn't match the dictionary
+            
             clean_key = raw_feature.split(':')[0]
             type_importance[clean_key] += w
 
@@ -211,5 +210,4 @@ def print_final_feature_contributions(crf):
         desc = feature_descriptions.get(f_type, "Grammar/Context Value")
         print(f"{i:<5} | {f_type:<25} | {desc:<35} | {total_w:,.2f}")
 
-# Call with your crf model
 print_final_feature_contributions(crf)
