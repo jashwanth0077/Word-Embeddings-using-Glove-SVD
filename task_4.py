@@ -9,15 +9,12 @@ from datasets import load_dataset
 
 # 1. LOAD CoNLL 2003 DATASET
 print("Loading CoNLL 2003 dataset...")
-# Change this:
-# dataset = load_dataset("conll2003")
 
-# To this:
-# This version by lhoestq (a lead HF maintainer) is script-free
+
+
 dataset = load_dataset("lhoestq/conll2003")
 
-# Define labels based on CoNLL 2003 standard (9 classes)
-# 0: O, 1: B-PER, 2: I-PER, 3: B-ORG, 4: I-ORG, 5: B-LOC, 6: I-LOC, 7: B-MISC, 8: I-MISC
+
 TAGS = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
 tag_to_idx = {tag: i for i, tag in enumerate(TAGS)}
 
@@ -28,7 +25,7 @@ class NER_MLP(nn.Module):
         self.network = nn.Sequential(
             nn.Linear(input_dim, 128),
             nn.ReLU(),
-            nn.Dropout(0.1), # Added dropout for better generalization
+            nn.Dropout(0.1), 
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, num_tags)
