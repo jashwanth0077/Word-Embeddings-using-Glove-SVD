@@ -15,31 +15,27 @@ from sklearn.metrics.pairwise import cosine_similarity
 def build_global_cooccurrence(json_path, window_size=5):
     """
     Constructs the N x N co-occurrence matrix X_ij.
-    Uses the provided JSON dataset structure.
     """
     with open(json_path, 'r') as f:
-        data = json.load(f) # cite: 49, 50
+        data = json.load(f)
     
-    vocab = list(data.keys()) # cite: 51, 53
+    vocab = list(data.keys())
     word_to_idx = {word: i for i, word in enumerate(vocab)}
     v_size = len(vocab)
     cooc_dict = {}
 
     print(f"Building global co-occurrence matrix for {v_size} tokens...")
     
-    # Track processed passages to avoid double-counting [cite: 52]
     processed_passages = set()
 
     for target_word, instances in data.items():
         for instance in instances:
-            # instance format: [passage_index, passage_text]
             passage_id = instance[0]
             passage_text = instance[1]
             if passage_id in processed_passages:
                 continue
             processed_passages.add(passage_id)
 
-            # Case-sensitive tokenization 
             tokens = passage_text.split()
             
             for i, token in enumerate(tokens):
@@ -48,7 +44,6 @@ def build_global_cooccurrence(json_path, window_size=5):
                 
                 u = word_to_idx[token]
                 
-                # Context Window (w) [cite: 14]
                 start = max(0, i - window_size)
                 end = min(len(tokens), i + window_size + 1)
                 
@@ -58,11 +53,9 @@ def build_global_cooccurrence(json_path, window_size=5):
                     
                     if context_word in word_to_idx:
                         v = word_to_idx[context_word]
-                        # Weighting by distance 1/d is standard GloVe practice
                         weight = 1.0 / abs(i - j)
                         cooc_dict[(u, v)] = cooc_dict.get((u, v), 0) + weight
 
-    # Convert to COO format for PyTorch [cite: 75]
     rows, cols, data_vals = [], [], []
     for (u, v), count in cooc_dict.items():
         rows.append(u)
@@ -75,10 +68,8 @@ def build_global_cooccurrence(json_path, window_size=5):
 class GloVeModel(nn.Module):
     def __init__(self, vocab_size, d):
         super(GloVeModel, self).__init__()
-        # Embedding matrices of size N x d 
         self.wi = nn.Embedding(vocab_size, d)
         self.wj = nn.Embedding(vocab_size, d)
-        # Biases [cite: 11]
         self.bi = nn.Embedding(vocab_size, 1)
         self.bj = nn.Embedding(vocab_size, 1)
         
@@ -87,7 +78,7 @@ class GloVeModel(nn.Module):
             nn.init.uniform_(param, -0.5, 0.5)
 
     def forward(self, i, j):
-        # Objective: wi^T * wj + bi + bj [cite: 11]
+        # Objective: wi^T * wj + bi + bj
         dot_product = torch.sum(self.wi(i) * self.wj(j), dim=1)
         return dot_product + self.bi(i).squeeze() + self.bj(j).squeeze()
 
@@ -96,7 +87,6 @@ def train_glove(matrix, v_size, d=200, lr=0.05, epochs=50,
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GloVeModel(v_size, d).to(device)
-    # Adagrad is standard, but lr must be higher (0.05)
     optimizer = optim.Adagrad(model.parameters(), lr=lr)
 
     i_all = matrix.row
@@ -115,7 +105,6 @@ def train_glove(matrix, v_size, d=200, lr=0.05, epochs=50,
     print(f"Training GloVe (d={d}, lr={lr}) on {device}...")
 
     for epoch in range(epochs):
-        # Shuffle indices for better convergence
         perm = np.random.permutation(n)
         epoch_loss = 0
 
@@ -130,7 +119,6 @@ def train_glove(matrix, v_size, d=200, lr=0.05, epochs=50,
             optimizer.zero_grad()
             preds = model(i_batch, j_batch)
 
-            # Standard GloVe Loss
             diff = preds - x_batch_log
             loss = torch.mean(w_batch * (diff ** 2))/(n / batch_size)
 
@@ -142,7 +130,6 @@ def train_glove(matrix, v_size, d=200, lr=0.05, epochs=50,
         loss_history.append(epoch_loss)
         print(f"Epoch {epoch:02d} | Loss: {epoch_loss:.4f}")
 
-    # detach() and cpu() to safely move to numpy
     embeddings = (model.wi.weight.detach() + 
                   model.wj.weight.detach()).cpu().numpy()
 
@@ -151,16 +138,11 @@ def train_glove(matrix, v_size, d=200, lr=0.05, epochs=50,
 
 # --- 4. Main Execution ---
 if __name__ == "__main__":
-    import time
-    import matplotlib.pyplot as plt
-    from sklearn.metrics.pairwise import cosine_similarity
 
     JSON_FILE = "updated_vocab_document_dict.json" 
     MATRIX_FILE = "cooccurrence_matrix.npz"
     
-    # 1. Load Data & Build/Load Matrix
     if os.path.exists(MATRIX_FILE):
-        print("Loading existing co-occurrence matrix...")
         X_mat = load_npz(MATRIX_FILE).tocoo()
         V_SIZE = X_mat.shape[0]
         print("Reloading vocabulary mapping...")
@@ -174,13 +156,12 @@ if __name__ == "__main__":
 
     print(f"Data Ready. Vocabulary Size: {V_SIZE}")
 
-    # --- REPORT PART 1: Hyperparameters ---
+    # --- REPORT PART 1: Final Hyperparameters ---
     FINAL_LR = 0.05
     FINAL_EPOCHS = 10
-    CONTEXT_WINDOW = 5 
+    CONTEXT_WINDOW = 5
     ALPHA = 0.75
     X_MAX = 100
-    
     print("\n" + "="*40)
     print("FINAL HYPERPARAMETERS (Tested on Fixed d)")
     print("="*40)
@@ -191,27 +172,32 @@ if __name__ == "__main__":
     print(f"Iterations:     {FINAL_EPOCHS}")
     print("="*40 + "\n")
 
-    # --- REPORT PART 2: Variable Dimensions & Plotting ---
+    # --- REPORT PART 2: Training Loop ---
     dimensions = [50, 100, 200, 300]
-    results_log = {} 
-    loss_histories = {} # Store data to plot the combined chart later
+    
+    latencies = []
+    final_losses = []
+    loss_histories = {} 
     
     embeddings_d200 = None
 
     print(f"Starting training for dimensions: {dimensions}...")
-    
+    all_embeddings = {}
+
     for d_val in dimensions:
         print(f"\n--> Training d={d_val}...")
+        
+        # --- CALCULATE LATENCY ---
         start_time = time.time()
-        
-        # Train
         vecs, losses = train_glove(X_mat, V_SIZE, d=d_val, lr=FINAL_LR, epochs=FINAL_EPOCHS)
+        end_time = time.time()
+        all_embeddings[d_val] = vecs
         
-        latency = time.time() - start_time
+        latency = end_time - start_time
         final_loss = losses[-1]
         
-        # Store for analysis/combined plot
-        results_log[d_val] = {'latency': latency, 'loss': final_loss}
+        latencies.append(latency)
+        final_losses.append(final_loss)
         loss_histories[d_val] = losses
         
         if d_val == 200:
@@ -225,69 +211,96 @@ if __name__ == "__main__":
         }
         with open(filename, "w") as f:
             json.dump(embedding_dict, f)
-        print(f"Saved {filename} (mapped dictionary)")
 
-        # --- PLOT INDIVIDUAL CURVE ---
-        plt.figure(figsize=(8, 5))
-        plt.plot(losses, color='blue', linewidth=2)
-        plt.title(f"Loss Curve for d={d_val} (Final: {final_loss:.4f})")
+        # --- PLOT 1: Individual Loss Curve ---
+        plt.figure(figsize=(6, 4))
+        plt.plot(losses, color='blue')
+        plt.title(f"Loss Curve (d={d_val})")
         plt.xlabel("Epochs")
         plt.ylabel("Loss")
         plt.grid(True)
-        plt.savefig(f"loss_curve_d{d_val}.png")
-        plt.close() # Close figure to prevent overlap
-        print(f"Saved plot: loss_curve_d{d_val}.png")
+        plt.savefig(f"plot_loss_d{d_val}.png")
+        plt.close()
 
-    # --- PLOT COMBINED CURVE ---
-    print("\nGenerating Combined Plot...")
+    # --- REPORT PART 3: Analysis Visualizations ---
+    
     plt.figure(figsize=(10, 6))
     for d_val in dimensions:
-        lat = results_log[d_val]['latency']
-        plt.plot(loss_histories[d_val], label=f'd={d_val} ({lat:.1f}s)')
-    
-    plt.title(f"Combined GloVe Loss Curves (lr={FINAL_LR})")
+        plt.plot(loss_histories[d_val], label=f'd={d_val}')
+    plt.title("Combined Loss Curves")
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
     plt.legend()
     plt.grid(True)
-    plt.savefig("glove_loss_curves_combined.png")
-    print("Saved combined plot: glove_loss_curves_combined.png")
+    plt.savefig("plot_combined_loss.png")
+    plt.close()
 
-    # --- REPORT PART 3: Analysis ---
+    plt.figure(figsize=(8, 5))
+    plt.bar([str(d) for d in dimensions], latencies, color='orange', alpha=0.7)
+    plt.title("Training Latency (Time) vs Dimension")
+    plt.xlabel("Dimension (d)")
+    plt.ylabel("Time (seconds)")
+    plt.grid(axis='y')
+    plt.savefig("plot_latency_analysis.png")
+    plt.close()
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(dimensions, final_losses, marker='o', linestyle='-', color='green')
+    plt.title("Final Loss vs Dimension (Performance)")
+    plt.xlabel("Dimension (d)")
+    plt.ylabel("Final Loss")
+    plt.grid(True)
+    plt.savefig("plot_loss_analysis.png")
+    plt.close()
+
+    print("\n[Visuals] All plots saved to disk.")
+
     print("\n" + "="*40)
-    print("LATENCY AND LOSS ANALYSIS")
+    print("LATENCY AND LOSS REPORT")
     print("="*40)
     print(f"{'Dim':<5} | {'Latency (s)':<15} | {'Final Loss':<15}")
     print("-" * 45)
-    for d in dimensions:
-        rec = results_log[d]
-        print(f"{d:<5} | {rec['latency']:<15.2f} | {rec['loss']:<15.4f}")
+    for i, d in enumerate(dimensions):
+        print(f"{d:<5} | {latencies[i]:<15.2f} | {final_losses[i]:<15.4f}")
+    print("-" * 45)
 
-    # --- REPORT PART 4: Nearest Neighbors (Top-5) ---
-    print("\n" + "="*40)
-    print("NEAREST NEIGHBORS (d=200)")
-    print("="*40)
+ # --- REPORT PART 4: Nearest Neighbors (Top-5 for ALL Dimensions) ---
+    print("\n" + "="*60)
+    print("NEAREST NEIGHBOR COMPARISON ACROSS DIMENSIONS")
+    print("="*60)
     
     word_to_idx = {w: i for i, w in enumerate(vocab_list)}
     idx_to_word = {i: w for i, w in enumerate(vocab_list)}
     
-    target_words = ["model", "data", "system"] 
-    target_words = [w for w in target_words if w in word_to_idx]
-    if len(target_words) < 3:
-        target_words = vocab_list[:3] 
+    target_words = ["president", "London", "politics"]
+    valid_targets = [w for w in target_words if w in word_to_idx]
+    
+    if not valid_targets:
+        valid_targets = vocab_list[:3]
 
-    for target in target_words:
-        t_idx = word_to_idx[target]
-        t_vec = embeddings_d200[t_idx].reshape(1, -1)
+    sorted_dims = sorted(all_embeddings.keys()) 
+
+    for d_val in sorted_dims:
+        print("\n" + "-"*40)
+        print(f"Dimension d={d_val}")
+        print("-"*40)
         
-        sims = cosine_similarity(t_vec, embeddings_d200)[0]
-        sorted_indices = sims.argsort()[::-1]
-        top_indices = sorted_indices[1:6] 
+        current_vecs = all_embeddings[d_val]
         
-        print(f"\nWord: '{target}'")
-        for rank, idx in enumerate(top_indices, 1):
-            neighbor_word = idx_to_word[idx]
-            score = sims[idx]
-            print(f"  {rank}. {neighbor_word:<15} (Sim: {score:.4f})")
+        for target in valid_targets:
+            t_idx = word_to_idx[target]
+            
+            t_vec = current_vecs[t_idx].reshape(1, -1)
+            
+            sims = cosine_similarity(t_vec, current_vecs)[0]
+            sorted_indices = sims.argsort()[::-1]
+            top_indices = sorted_indices[1:6] 
+            
+            print(f"Word: '{target}'")
+            for rank, idx in enumerate(top_indices, 1):
+                neighbor_word = idx_to_word[idx]
+                score = sims[idx]
+                print(f"  {rank}. {neighbor_word:<15} (Sim: {score:.4f})")
+            print("")
 
     print("\nTask Complete.")

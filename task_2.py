@@ -8,23 +8,23 @@ from sklearn.metrics.pairwise import cosine_similarity
 # 1. Loading the JSON 
 json_path = "updated_vocab_document_dict.json"
 with open(json_path, "r", encoding="utf-8") as f:
-    inverted_data = json.load(f)
+    data = json.load(f)
 
 # 2. Extract Unique Documents
 unique_docs = {}
-for word, doc_list in inverted_data.items():
+for word, doc_list in data.items():
     for doc_id, doc_text in doc_list:
         if doc_id not in unique_docs:
             unique_docs[doc_id] = doc_text
 
-doc_ids = sorted(unique_docs.keys())  
+doc_ids = sorted(unique_docs.keys())
 corpus = []
 for did in doc_ids:
     corpus.append(unique_docs[did])
 
 print(f"Unique documents found: {len(corpus)}")
 
-target_vocab = sorted(inverted_data.keys())
+target_vocab = sorted(data.keys())
 vectorizer = CountVectorizer(vocabulary=target_vocab, lowercase=False)
 X_doc_term = vectorizer.fit_transform(corpus)
 
@@ -68,7 +68,7 @@ for d in Dim:
             vector_matrix.append(word_to_vec[word])
     vector_matrix = np.array(vector_matrix)
 
-    chosen_words = ["president", "London", "politics"] 
+    chosen_words = ["president", "London", "politics"]
 
     print(f"\n--- Top 5 Nearest Neighbors (SVD {d}) ---")
     for word in chosen_words:

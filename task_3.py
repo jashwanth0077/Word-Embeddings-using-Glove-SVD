@@ -12,7 +12,7 @@ def word2features(sent, i):
     features = {
         'bias': 1.0,
         'word.lower()': word.lower(),
-        #  SUB-WORD FEATURES 
+        #  SUB-WORD FEATURES
         'word[-3:]': word[-3:],
         'word[-2:]': word[-2:],
         'word[:3]': word[:3],
@@ -25,7 +25,7 @@ def word2features(sent, i):
         'word.length': len(word),
         # GRAMMATICAL FEATURES (POS & CHUNK)
         'postag': postag,
-        'postag.is_proper': postag in [22, 23], 
+        'postag.is_proper': postag in [22, 23],
         'chunktag': chunktag,                 
     }
     
@@ -63,11 +63,9 @@ def sent2features(sent):
     return [word2features(sent, i) for i in range(len(sent))]
 
 def sent2labels(sent):
-  
     return [label for token, postag, chunktag, label in sent]
 
 # 2. DATA PREPARATION
-
 print("Loading CoNLL-2003 dataset...")
 dataset = load_dataset("lhoestq/conll2003") 
 
@@ -123,11 +121,10 @@ print_top_features(crf)
 
 # 5. EVALUATION
 labels = list(crf.classes_)
-labels.remove('O') 
 y_pred = crf.predict(X_test)
 
 f1 = metrics.flat_f1_score(y_test, y_pred, average='weighted', labels=labels)
-print(f"\nWeighted F1 Score (excluding 'O'): {f1:.4f}")
+print(f"\nWeighted F1 Score : {f1:.4f}")
 
 # Detailed report
 print("\nClassification Report:")
@@ -143,71 +140,94 @@ print("5. STRUCTURAL: Chunk Tags (chunktag) - identifying Noun/Verb phrases")
 
 from collections import defaultdict
 
-def print_final_feature_contributions(crf):
-    """
-    Aggregates and prints the sum of absolute weights for each feature type.
-    Fixes AttributeError by unpacking (feature, label) tuples from state_features_.
-    """
+def analyze_feature_contributions(crf):
+
     state_features = crf.state_features_
-    type_importance = defaultdict(float)
     
-    # 1. DEFINE KNOWN FEATURES (Exact keys from word2features)
+    global_importance = defaultdict(float)
+    label_importance = defaultdict(lambda: defaultdict(float))
+    
+    # 1. DEFINE KNOWN FEATURES
     feature_descriptions = {
-        'word.lower()': 'The current word (lowercase)',
-        'word[-3:]': 'Suffix: last 3 characters',
-        'word[-2:]': 'Suffix: last 2 characters',
-        'word[:3]': 'Prefix: first 3 characters',
-        'word[:2]': 'Prefix: first 2 characters',
-        'word.isupper()': 'Is word all caps?',
-        'word.istitle()': 'Is word title-cased?',
-        'word.isdigit()': 'Is word a number?',
-        'word.has_hyphen': 'Does word contain a hyphen?',
-        'word.length': 'Word length',
+        'word.lower()': 'Current word',
+        'word[-3:]': 'Suffix (last 3 chars)',
+        'word[-2:]': 'Suffix (last 2 chars)',
+        'word[:3]': 'Prefix (first 3 chars)',
+        'word[:2]': 'Prefix (first 2 chars)',
+        'word.isupper()': 'Is All Caps?',
+        'word.istitle()': 'Is Title Case?',
+        'word.isdigit()': 'Is Number?',
+        'word.has_hyphen': 'Has Hyphen?',
+        'word.length': 'Word Length',
         'postag': 'Current POS tag',
-        'postag.is_proper': 'Is it a proper noun (NNP/NNPS)?',
+        'postag.is_proper': 'Is Proper Noun?',
         'chunktag': 'Current Chunk tag',
-        '-1:word.lower()': 'Previous word (lowercase)',
-        '-1:word.istitle()': 'Was previous word title-cased?',
+        
+        '-1:word.lower()': 'Previous word',
+        '-1:word.istitle()': 'Prev word Title Case?',
         '-1:postag': 'Previous POS tag',
         '-1:chunktag': 'Previous Chunk tag',
-        '+1:word.lower()': 'Next word (lowercase)',
-        '+1:word.istitle()': 'Is next word title-cased?',
+        
+        '+1:word.lower()': 'Next word',
+        '+1:word.istitle()': 'Next word Title Case?',
         '+1:postag': 'Next POS tag',
         '+1:chunktag': 'Next Chunk tag',
-        'bias': 'Model bias term',
-        'BOS': 'Beginning of Sentence marker',
-        'EOS': 'End of Sentence marker'
+        
+        'bias': 'Bias Term',
+        'BOS': 'Start of Sentence',
+        'EOS': 'End of Sentence'
     }
 
-    
     sorted_known_keys = sorted(feature_descriptions.keys(), key=len, reverse=True)
 
-    # 2. UNPACK TUPLE AND AGGREGATE
-   
     for (raw_feature, label), weight in state_features.items():
         w = abs(weight)
-        match_found = False
-
-       
+        
+        found_key = "Other"
+        
         for key in sorted_known_keys:
+            # Check exact match or prefix match
             if raw_feature == key or raw_feature.startswith(key + ":"):
-                type_importance[key] += w
-                match_found = True
+                found_key = key
                 break
         
-        if not match_found:
-            
-            clean_key = raw_feature.split(':')[0]
-            type_importance[clean_key] += w
+        # Fallback: if it didn't match our list, try splitting by colon
+        if found_key == "Other":
+             found_key = raw_feature.split(':')[0]
 
-    # 3. SORT & PRINT
-    ranked_features = sorted(type_importance.items(), key=lambda x: x[1], reverse=True)
+        global_importance[found_key] += w
+        label_importance[label][found_key] += w
 
-    print(f"\n{'Rank':<5} | {'Feature Type':<25} | {'What it means':<35} | {'Total Importance'}")
-    print("-" * 100)
+    ranked_global = sorted(global_importance.items(), key=lambda x: x[1], reverse=True)
+
+    print(f"\n{'='*80}")
+    print("GLOBAL FEATURE IMPORTANCE (All Tags Combined)")
+    print(f"{'='*80}")
+    print(f"{'Rank':<5} | {'Feature Type':<25} | {'Description':<25} | {'Total Weight'}")
+    print("-" * 80)
     
-    for i, (f_type, total_w) in enumerate(ranked_features, 1):
-        desc = feature_descriptions.get(f_type, "Grammar/Context Value")
-        print(f"{i:<5} | {f_type:<25} | {desc:<35} | {total_w:,.2f}")
+    for i, (f_type, total_w) in enumerate(ranked_global, 1):
+        desc = feature_descriptions.get(f_type, "Custom/Other")
+        print(f"{i:<5} | {f_type:<25} | {desc:<25} | {total_w:,.2f}")
 
-print_final_feature_contributions(crf)
+    print(f"\n{'='*80}")
+    print("TOP 5 FEATURE TYPES PER LABEL")
+    print(f"{'='*80}")
+
+    sorted_labels = sorted(label_importance.keys())
+
+    for label in sorted_labels:
+        print(f"\nLabel: [{label}]")
+        print(f"{'Rank':<5} | {'Feature Type':<25} | {'Importance':<15} | {'% of Label Total'}")
+        print("-" * 70)
+        
+        label_feats = label_importance[label]
+        total_label_weight = sum(label_feats.values())
+        
+        sorted_feats = sorted(label_feats.items(), key=lambda x: x[1], reverse=True)
+        
+        for i, (f_type, w) in enumerate(sorted_feats[:5], 1):
+            percent = (w / total_label_weight) * 100
+            print(f"{i:<5} | {f_type:<25} | {w:<15,.2f} | {percent:.1f}%")
+
+analyze_feature_contributions(crf)
